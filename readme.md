@@ -82,9 +82,8 @@ The application looks for bundletool.jar in the same directory. If not found, yo
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is open source.
 
 ## Acknowledgements
 
 - [Google Bundletool](https://developer.android.com/studio/command-line/bundletool) - The core tool used for AAB conversion
-- Contributors to this project
