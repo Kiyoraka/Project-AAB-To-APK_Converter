@@ -10,11 +10,11 @@ class AABtoAPKConverter:
     def __init__(self, root):
         self.root = root
         self.root.title("AAB to APK Converter")
-        self.root.geometry("700x500")
+        self.root.geometry("700x580")  # Increased height for new options
         self.root.resizable(True, True)
         
         # Set minimum window size
-        self.root.minsize(600, 400)
+        self.root.minsize(600, 500)
         
         # Variables
         self.aab_files = []
@@ -22,6 +22,9 @@ class AABtoAPKConverter:
         self.bundletool_path = ""
         self.keystore_path = ""
         self.keystore_pass = tk.StringVar(value="android")
+        self.key_pass = tk.StringVar(value="")  # Added separate key password
+        self.keystore_alias = tk.StringVar(value="")
+        self.sign_mode = tk.StringVar(value="sign")  # Added signing mode option
         self.java_installed = False
         
         # Create GUI elements
@@ -80,23 +83,58 @@ class AABtoAPKConverter:
         bundletool_btn = ttk.Button(bundletool_frame, text="Select bundletool.jar", command=self.select_bundletool)
         bundletool_btn.pack(side=tk.RIGHT)
         
+        # Signing options
+        sign_frame = ttk.LabelFrame(main_frame, text="Signing Options", padding="10")
+        sign_frame.pack(fill=tk.X, pady=5)
+        
+        # Signing mode
+        self.sign_mode = tk.StringVar(value="sign")
+        sign_mode_frame = ttk.Frame(sign_frame)
+        sign_mode_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Radiobutton(sign_mode_frame, text="Sign APK (recommended)", variable=self.sign_mode, 
+                      value="sign", command=self.toggle_signing_options).pack(anchor=tk.W)
+        ttk.Radiobutton(sign_mode_frame, text="Extract only (no signing - for testing only)", 
+                      variable=self.sign_mode, value="extract", command=self.toggle_signing_options).pack(anchor=tk.W)
+        
+        # Keystore section - will be shown/hidden based on sign mode
+        self.keystore_section = ttk.Frame(sign_frame)
+        self.keystore_section.pack(fill=tk.X, pady=5)
+        
         # Keystore selection
-        keystore_frame = ttk.Frame(tools_frame)
+        keystore_frame = ttk.Frame(self.keystore_section)
         keystore_frame.pack(fill=tk.X, pady=5)
         
-        self.keystore_label = ttk.Label(keystore_frame, text="No keystore selected (optional)")
+        self.keystore_label = ttk.Label(keystore_frame, text="No keystore selected")
         self.keystore_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         
         keystore_btn = ttk.Button(keystore_frame, text="Select Keystore", command=self.select_keystore)
         keystore_btn.pack(side=tk.RIGHT)
         
         # Keystore password
-        pass_frame = ttk.Frame(tools_frame)
+        pass_frame = ttk.Frame(self.keystore_section)
         pass_frame.pack(fill=tk.X, pady=5)
         
         ttk.Label(pass_frame, text="Keystore Password:").pack(side=tk.LEFT)
         pass_entry = ttk.Entry(pass_frame, textvariable=self.keystore_pass, show="*")
         pass_entry.pack(side=tk.LEFT, padx=5)
+        
+        # Key password (separate from keystore password for Unity keystores)
+        key_pass_frame = ttk.Frame(self.keystore_section)
+        key_pass_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(key_pass_frame, text="Key Password:").pack(side=tk.LEFT)
+        key_pass_entry = ttk.Entry(key_pass_frame, textvariable=self.key_pass, show="*")
+        key_pass_entry.pack(side=tk.LEFT, padx=5)
+        ttk.Label(key_pass_frame, text="(Same as keystore password if empty)").pack(side=tk.LEFT, padx=5)
+        
+        # Keystore alias
+        alias_frame = ttk.Frame(self.keystore_section)
+        alias_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(alias_frame, text="Keystore Alias:").pack(side=tk.LEFT)
+        alias_entry = ttk.Entry(alias_frame, textvariable=self.keystore_alias)
+        alias_entry.pack(side=tk.LEFT, padx=5)
         
         # Convert button
         convert_btn = ttk.Button(main_frame, text="Convert AAB to APK", command=self.start_conversion, style="Accent.TButton")
@@ -130,7 +168,8 @@ class AABtoAPKConverter:
 
     def check_java(self):
         try:
-            result = subprocess.run(["java", "-version"], check=True, capture_output=True, text=True, stderr=subprocess.STDOUT)
+            # Fixed: removed stderr=subprocess.STDOUT to avoid conflict with capture_output
+            result = subprocess.run(["java", "-version"], check=True, capture_output=True, text=True)
             # Java version output typically goes to stderr
             version_output = result.stderr if result.stderr else result.stdout
             
@@ -285,6 +324,13 @@ class AABtoAPKConverter:
         self.status_var.set(message)
         self.root.update_idletasks()
 
+    def toggle_signing_options(self):
+        """Show or hide keystore options based on signing mode"""
+        if self.sign_mode.get() == "sign":
+            self.keystore_section.pack(fill=tk.X, pady=5)
+        else:
+            self.keystore_section.pack_forget()
+            
     def validate_inputs(self):
         if not self.aab_files:
             messagebox.showwarning("No Input", "Please select at least one AAB file.")
@@ -306,14 +352,23 @@ class AABtoAPKConverter:
             if not result:
                 return False
         
-        # If no keystore is selected, warn the user but allow them to proceed
-        if not self.keystore_path:
-            result = messagebox.askokcancel(
-                "No Keystore", 
-                "No keystore selected. The conversion may fail without a keystore. Continue anyway?"
-            )
-            if not result:
-                return False
+        # Only validate keystore options if in signing mode
+        if self.sign_mode.get() == "sign":
+            # If no keystore is selected, warn the user but allow them to proceed
+            if not self.keystore_path:
+                result = messagebox.askokcancel(
+                    "No Keystore", 
+                    "No keystore selected. The conversion may fail without a keystore. Continue anyway?"
+                )
+                if not result:
+                    return False
+            elif not self.keystore_alias.get():
+                result = messagebox.askokcancel(
+                    "No Keystore Alias", 
+                    "No keystore alias specified. This is required when using a keystore. Continue anyway?"
+                )
+                if not result:
+                    return False
         
         return True
 
@@ -352,8 +407,9 @@ class AABtoAPKConverter:
                 apks_output = os.path.join(self.output_dir, f"{base_name}.apks")
                 apk_output = os.path.join(self.output_dir, f"{base_name}.apk")
                 
-                # Build command based on whether keystore is provided
-                if self.keystore_path:
+                # Build command based on signing mode and keystore settings
+                if self.sign_mode.get() == "sign" and self.keystore_path:
+                    self.log("Using keystore for signing APK...")
                     cmd = [
                         "java", "-jar", self.bundletool_path,
                         "build-apks", "--bundle", aab_file,
@@ -362,8 +418,18 @@ class AABtoAPKConverter:
                         "--ks", self.keystore_path,
                         "--ks-pass", f"pass:{self.keystore_pass.get()}"
                     ]
+                    
+                    # Add key alias if provided
+                    if self.keystore_alias.get():
+                        cmd.extend(["--ks-key-alias", self.keystore_alias.get()])
+                    
+                    # Add key password if different from keystore password
+                    if self.key_pass.get():
+                        cmd.extend(["--key-pass", f"pass:{self.key_pass.get()}"])
+                    
                 else:
-                    # Without keystore - will use debug keystore if available
+                    # Extract only mode - no signing
+                    self.log("Using extract-only mode (no signing)...")
                     cmd = [
                         "java", "-jar", self.bundletool_path,
                         "build-apks", "--bundle", aab_file,
@@ -372,6 +438,8 @@ class AABtoAPKConverter:
                     ]
                 
                 self.log(f"Building APKS for {file_name}...")
+                self.log(f"Command: {' '.join(cmd)}")
+                
                 try:
                     process = subprocess.run(cmd, check=True, capture_output=True, text=True)
                     
@@ -379,27 +447,54 @@ class AABtoAPKConverter:
                     extract_dir = os.path.join(self.output_dir, f"extracted_{base_name}")
                     os.makedirs(extract_dir, exist_ok=True)
                     
+                    # Create a simple device-spec file for extraction
+                    device_spec_path = os.path.join(self.output_dir, "device-spec.json")
+                    with open(device_spec_path, "w") as f:
+                        f.write('''
+                        {
+                            "supportedAbis": ["X86", "ARMEABI_V7A", "ARM64_V8A"],
+                            "supportedLocales": ["en"],
+                            "screenDensity": 480,
+                            "sdkVersion": 28
+                        }
+                        ''')
+                    
                     extract_cmd = [
                         "java", "-jar", self.bundletool_path,
                         "extract-apks",
                         "--apks", apks_output,
-                        "--output-dir", extract_dir
+                        "--output-dir", extract_dir,
+                        "--device-spec", device_spec_path
                     ]
                     
                     self.log("Extracting universal APK...")
+                    self.log(f"Extract command: {' '.join(extract_cmd)}")
                     subprocess.run(extract_cmd, check=True, capture_output=True, text=True)
                     
                     # Move the universal APK to the desired output location
-                    universal_apk = os.path.join(extract_dir, "universal.apk")
-                    if os.path.exists(universal_apk):
+                    # The extracted APK might be named differently when using device-spec
+                    # Try to find any APK file in the extracted directory
+                    apk_files = [f for f in os.listdir(extract_dir) if f.endswith('.apk')]
+                    
+                    if apk_files:
+                        extracted_apk = os.path.join(extract_dir, apk_files[0])
+                        self.log(f"Found extracted APK: {apk_files[0]}")
+                        
                         # If file already exists, replace it
                         if os.path.exists(apk_output):
                             os.remove(apk_output)
-                        os.rename(universal_apk, apk_output)
+                        os.rename(extracted_apk, apk_output)
                         self.log(f"Successfully created: {apk_output}")
                         success_count += 1
                     else:
-                        self.log(f"ERROR: Universal APK not found in extracted files for {file_name}")
+                        self.log(f"ERROR: No APK files found in extracted files for {file_name}")
+                        # Try to list the directory contents to debug
+                        try:
+                            self.log(f"Contents of {extract_dir}:")
+                            for file in os.listdir(extract_dir):
+                                self.log(f"  - {file}")
+                        except Exception:
+                            self.log("Could not list directory contents")
                     
                     # Clean up temporary files
                     try:
@@ -413,7 +508,13 @@ class AABtoAPKConverter:
                 
                 except subprocess.CalledProcessError as e:
                     self.log(f"ERROR converting {file_name}: {e}")
-                    self.log(f"Error details: {e.stderr}")
+                    error_details = e.stderr if e.stderr else "No detailed error information available"
+                    self.log(f"Error details: {error_details}")
+                    
+                    if "Incorrect keystore password" in error_details:
+                        self.log("HINT: This may be a keystore password issue. Try different passwords or use the extract-only mode.")
+                    elif "Flag --ks-key-alias is required" in error_details:
+                        self.log("HINT: You need to provide a key alias when using a keystore.")
                 
                 # Update progress bar
                 self.progress_bar["value"] += progress_step
