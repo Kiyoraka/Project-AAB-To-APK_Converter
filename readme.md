@@ -4,6 +4,16 @@ A simple, user-friendly GUI tool to convert Android App Bundle (.aab) files to A
 
 ![Screenshot](assets/img/screenshot.png)
 
+## Tech Stack
+
+- **Python**: Core application logic
+- **Tkinter**: GUI framework for the user interface
+- **Bundletool**: Google's official tool for working with Android App Bundles
+- **Java**: Required runtime for executing bundletool commands
+- **PyInstaller**: Used to package the Python application as a standalone Windows executable
+- **Threading**: For non-blocking UI during conversion operations
+- **Subprocess**: For executing Java commands from within Python
+
 ## Features
 
 - **Simple GUI Interface**: Convert AAB files with just a few clicks
