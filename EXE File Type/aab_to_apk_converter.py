@@ -22,12 +22,16 @@ class AABtoAPKConverter:
         self.bundletool_path = ""
         self.keystore_path = ""
         self.keystore_pass = tk.StringVar(value="android")
+        self.java_installed = False
         
         # Create GUI elements
         self.create_widgets()
         
         # Check for Java installation
-        self.check_java()
+        self.java_installed = self.check_java()
+        
+        # Check for bundletool.jar in the application directory
+        self.check_bundletool()
 
     def create_widgets(self):
         # Create main frame with padding
@@ -126,11 +130,111 @@ class AABtoAPKConverter:
 
     def check_java(self):
         try:
-            subprocess.run(["java", "-version"], check=True, capture_output=True)
-            self.log("Java detected on system.")
+            result = subprocess.run(["java", "-version"], check=True, capture_output=True, text=True, stderr=subprocess.STDOUT)
+            # Java version output typically goes to stderr
+            version_output = result.stderr if result.stderr else result.stdout
+            
+            # Extract version information
+            import re
+            version_match = re.search(r'version "([^"]+)"', version_output)
+            if version_match:
+                version = version_match.group(1)
+                self.log(f"Java detected: version {version}")
+                return True
+            else:
+                self.log("Java detected but couldn't determine version.")
+                return True
+                
         except (subprocess.SubprocessError, FileNotFoundError):
-            messagebox.showerror("Java Not Found", "Java is required but not found on your system. Please install Java to use this application.")
-            self.log("ERROR: Java not found. Please install Java to continue.")
+            self.show_java_missing_dialog()
+            return False
+    
+    def check_bundletool(self):
+        """Check if bundletool.jar exists in the same directory as the application"""
+        # Get the application directory (works with PyInstaller)
+        app_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+        bundletool_path = os.path.join(app_dir, "bundletool.jar")
+        
+        if os.path.exists(bundletool_path):
+            self.bundletool_path = bundletool_path
+            self.bundletool_label.config(text=os.path.basename(bundletool_path))
+            self.log(f"Found bundletool.jar in application directory: {bundletool_path}")
+            return True
+        else:
+            self.log("No bundletool.jar found in application directory.")
+            return False
+    
+    def show_java_missing_dialog(self):
+        java_dialog = tk.Toplevel(self.root)
+        java_dialog.title("Java Not Found")
+        java_dialog.geometry("500x320")
+        java_dialog.resizable(False, False)
+        java_dialog.transient(self.root)
+        java_dialog.grab_set()
+        
+        # Center the dialog
+        java_dialog.geometry("+%d+%d" % (
+            self.root.winfo_rootx() + self.root.winfo_width()//2 - 250,
+            self.root.winfo_rooty() + self.root.winfo_height()//2 - 160
+        ))
+        
+        # Warning icon
+        warning_frame = ttk.Frame(java_dialog)
+        warning_frame.pack(pady=(20, 0))
+        
+        # Use Unicode warning symbol as we don't have image support in this example
+        warning_label = ttk.Label(warning_frame, text="⚠️", font=("Helvetica", 48))
+        warning_label.pack()
+        
+        # Message
+        message_frame = ttk.Frame(java_dialog, padding=20)
+        message_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(message_frame, text="Java is not installed or not found!", 
+                 font=("Helvetica", 12, "bold")).pack(pady=(0, 10))
+        
+        message_text = "This application requires Java to convert AAB files to APK.\n\n" + \
+                      "Please install Java Development Kit (JDK) 8 or higher."
+        ttk.Label(message_frame, text=message_text, wraplength=400).pack()
+        
+        # Download links
+        link_frame = ttk.Frame(message_frame)
+        link_frame.pack(pady=10)
+        
+        ttk.Label(link_frame, text="Download from:").pack(side=tk.LEFT)
+        
+        # Create hyperlink style labels
+        link_style = ttk.Style()
+        link_style.configure("Link.TLabel", foreground="blue", font=("Helvetica", 10, "underline"))
+        
+        adoptium_link = ttk.Label(link_frame, text="Adoptium", style="Link.TLabel", cursor="hand2")
+        adoptium_link.pack(side=tk.LEFT, padx=5)
+        adoptium_link.bind("<Button-1>", lambda e: self.open_url("https://adoptium.net/"))
+        
+        oracle_link = ttk.Label(link_frame, text="Oracle", style="Link.TLabel", cursor="hand2")
+        oracle_link.pack(side=tk.LEFT, padx=5)
+        oracle_link.bind("<Button-1>", lambda e: self.open_url("https://www.oracle.com/java/technologies/downloads/"))
+        
+        # Buttons
+        button_frame = ttk.Frame(java_dialog)
+        button_frame.pack(pady=20)
+        
+        ttk.Button(button_frame, text="Check Again", command=lambda: self.recheck_java(java_dialog)).pack(side=tk.LEFT, padx=10)
+        ttk.Button(button_frame, text="Continue Anyway", command=java_dialog.destroy).pack(side=tk.LEFT, padx=10)
+        
+        self.log("ERROR: Java not found. Please install Java to continue.")
+    
+    def open_url(self, url):
+        """Open URL in default browser"""
+        import webbrowser
+        webbrowser.open(url)
+    
+    def recheck_java(self, dialog):
+        """Recheck if Java is installed after user potentially installed it"""
+        if self.check_java():
+            dialog.destroy()
+            messagebox.showinfo("Java Detected", "Java has been successfully detected on your system.")
+        # If Java is still not found, the check_java method will show the dialog again
 
     def select_aab_files(self):
         files = filedialog.askopenfilenames(
@@ -193,6 +297,14 @@ class AABtoAPKConverter:
         if not self.bundletool_path:
             messagebox.showwarning("No Bundletool", "Please select bundletool.jar file.")
             return False
+        
+        if not self.java_installed:
+            result = messagebox.askokcancel(
+                "Java Not Detected", 
+                "Java is required for conversion. The process will likely fail without Java installed. Continue anyway?"
+            )
+            if not result:
+                return False
         
         # If no keystore is selected, warn the user but allow them to proceed
         if not self.keystore_path:
